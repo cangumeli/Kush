@@ -189,24 +189,26 @@ int execute(char *args[])
 int generic_execute(char *args[])
 {
   char buf[400];
-  FILE *cf = popen("echo $PATH", "r");
+  FILE *cf;
   char *token;
+  
+  //read the path
+  cf = popen("echo $PATH", "r");
   fgets(buf, sizeof(buf), cf);
-
-  buf[strlen(buf)-1] = '\0'; //erase the newline
   pclose(cf);
-
+  
+  buf[strlen(buf)-1] = '\0'; //erase the newline
+  
   token = strtok(buf, ":");
   while(token != NULL) {
     char exp_cmd[50]; //stores path+command
-    
     sprintf(exp_cmd, "%s/%s", token, args[0]);
-    token = strtok(NULL, ":"); //path to check
-    
+
     //if execution fail, continue; else return
     if(execv(exp_cmd, args) != -1)
       return 1;
-   
+    
+    token = strtok(NULL, ":"); //update destination to check
   }
   return -1;
 }
