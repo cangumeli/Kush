@@ -52,7 +52,9 @@ int main(void)
 	  }
 	  exit(0); //exit child.
 	} else {
-	  wait(NULL);
+	  //printf("%d\n", background);
+	  if (!background)
+	      waitpid(child);
 	}
       }
     }	
@@ -212,3 +214,4 @@ int generic_execute(char *args[])
   }
   return -1;
 }
+
