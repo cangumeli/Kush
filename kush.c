@@ -82,38 +82,33 @@ int main(void)
 	  }
 	}
 	else { //if the program is piped
-	  
+	  int child2;
 	  pipe(pipe_fd);
 	  child = fork();
-	  if (child == 0) {
-	    int child2 = fork();
-	    if (child2 == 0) { //child2
-	     
-	      //printf("%s\n", pargs[1]);
-	      dup2(pipe_fd[0], 0);
+	  child2 = (child == 0) ? -2 : fork();
+	  
+	  if (child2 == 0) { //child2
+	     dup2(pipe_fd[0], 0);
 	      close(pipe_fd[1]);
 	      if (generic_execute(pargs) == -1)
 		printf("Error: Unknown command after |\n");
-              exit(0);	     	     
-            } 
-	    else { //child
-	      int status;
-	      dup2(pipe_fd[1], 1);
-	      close(pipe_fd[0]);
-	      if (generic_execute(args) == -1)
-		printf("Error: Unknown command before |\n");
-              waitpid(child2, &status, 0);
-              exit(0);
-           }
-            
-//kill(child2, SIGTERM);
-	   
-          } else { //parent
-	    int status;
+	      exit(0);
+              
+	  }
+	  else if (child2 == -2) { //child
+	    dup2(pipe_fd[1], 1);
+	    close(pipe_fd[0]);
+	    if (generic_execute(args) == -1)
+	      printf("Error: Unknown command before |\n");
+	    exit(0);
+	  } 
+	  else { //parent
+	    
 	    if (!background) {
-              waitpid(child, &status, 0);
-	    }
+	     wait(&status);
+	     }
 	    printf("terimation :%d\n", WIFEXITED(status));
+	   
 	  }
 	}
       }
