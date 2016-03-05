@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <string.h>
-
+#include <fcntl.h>
 
 #define MAX_LINE       80 /* 80 chars per line, per command, should be enough. */
 
@@ -16,22 +16,28 @@ int parseCommand(char inputBuffer[], char *args[],int *background);
 int execute(char *args[]);
 int generic_execute(char *args[]);
 
+int setup_redirect(char *args[], int *fd);
+int setdown_redirect(int *fd, int sr_status) { if (sr_status >= 0) close(*fd); }
+
+int pipe_args(char *args[], char *pipe_args[]);
+
 int main(void)
 {
   char inputBuffer[MAX_LINE]; 	        /* buffer to hold the command entered */
   int background;             	        /* equals 1 if a command is followed by '&' */
-  char *args[MAX_LINE/2 + 1];	        /* command line (of 80) has max of 40 arguments */
+  char *args[MAX_LINE/2 + 1];           /* command line (of 80) has max of 40 arguments */
   pid_t child;            		/* process id of the child process */
   int status;           		/* result from execv system call*/
   int shouldrun = 1;
 	
   int i, upper;
   printf("Kush ucuyor...\n");
-  while (shouldrun) {            		/* Program terminates normally inside setup */
+  while (shouldrun) {
+    /* Program terminates normally inside setup */
     background = 0;
-		
+    
     shouldrun = parseCommand(inputBuffer,args,&background);       /* get next command */
-		
+   
     if (strncmp(inputBuffer, "exit", 4) == 0)
       shouldrun = 0;     /* Exiting from kush*/
 
@@ -42,22 +48,33 @@ int main(void)
 	(2) the child process will invoke execv()
 	(3) if command included &, parent will invoke wait()
        */
+       
       if (strcmp(args[0], "cd") == 0) {
-	if(chdir(args[1]) == -1)  printf("Directory does not exist: %s\n", args[1]); 
+	if(chdir(args[1]) == -1) 
+	  printf("Directory does not exist: %s\n", args[1]);
       } else { //child process required
 	child = fork();
 	if (child == 0) {
+	  int fd;
+	  int srs = setup_redirect(args, &fd); //set arguments and open file if redirection exists
+	  
+	  
+
 	  if (generic_execute(args) == -1) {
 	    printf("Error: Unknown command!\n");
 	  }
+	  setdown_redirect(&fd, srs); //close the file if opened
 	  exit(0); //exit child.
 	} else {
 	  //printf("%d\n", background);
+	  // printf("here\n");
 	  if (!background)
 	      waitpid(child);
 	}
       }
-    }	
+     
+      
+    }
     
   }
   return 0;
@@ -163,28 +180,6 @@ int parseCommand(char inputBuffer[], char *args[],int *background)
 
 int execute(char *args[])
 {
-  char *command = args[0];
-
-  if (strcmp(command, "cd") == 0) {
-    printf("\nError: not implemented yet.\n");
-  }
-  else if (strcmp(command, "clear") == 0) {
-    char *params[] = {"/usr/bin/clear", NULL};
-    execv(params[0], params);
-  }
-  else if (strcmp(command, "env") == 0) {
-    char *params[] = {"/usr/bin/env", NULL};
-    execv(params[0], params);
-  }
-  else if (strcmp(command, "echo") == 0) {
-    char *params[] = {"/bin/echo", args[1], NULL};
-    execv(params[0], params);
-  }
-
-  else {
-    return 1;
-  }
-  return 0;
   
 }
 
@@ -202,6 +197,7 @@ int generic_execute(char *args[])
   buf[strlen(buf)-1] = '\0'; //erase the newline
   
   token = strtok(buf, ":");
+
   while(token != NULL) {
     char exp_cmd[50]; //stores path+command
     sprintf(exp_cmd, "%s/%s", token, args[0]);
@@ -215,3 +211,58 @@ int generic_execute(char *args[])
   return -1;
 }
 
+int setup_redirect(char *args[], int *fd)
+{
+  char filename[MAX_LINE];
+  int size = 0;
+  
+  while (args[size] != NULL) size++;
+  // printf("%d\n", size);
+ 
+  if(size < 3) return -1;
+  
+  if (strcmp(args[size-2], ">") == 0) {
+    strcpy(filename, args[size-1]);
+    // printf("%s\n", filename);
+    args[size-1] = args[size-2] = NULL;
+    *fd = open(filename, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+    //if(1) return 1;
+    dup2(*fd, STDOUT_FILENO);
+    return 0;
+  }
+  if(strcmp(args[size-2], ">>") == 0) {
+    strcpy(filename, args[size-1]);
+    args[size-1] = args[size-2] = NULL;
+    *fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+    dup2(*fd, STDOUT_FILENO);
+    return 1;
+  }
+  
+  return -1;
+}
+
+int pipe_args(char *args[], char *pipe_args[])
+{
+  int pipe_index = 0;
+  int i=0, j, k;
+  while (args[i] != NULL) {
+    if (strcmp(args[i], "|") == 0 && i > 0) {
+      pipe_index = i;
+      break;
+    }
+    i++;
+  }
+  if (pipe_index == 0) return 0;  
+
+  args[pipe_index] = NULL;
+
+  j = pipe_index+1;
+  k = 0;
+  while (args[j] != NULL) {
+    pipe_args[k] = args[j];
+    j++;
+    k++;
+  }
+  
+  return k;
+}
