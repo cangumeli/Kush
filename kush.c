@@ -15,8 +15,6 @@
 int parseCommand(char inputBuffer[], char *args[],int *background);
 int execute(char *args[]);
 int generic_execute(char *args[]);
-char* getMin(char *args);
-char* getHour(char *args);
 
 int main(void)
 {
@@ -200,19 +198,26 @@ int generic_execute(char *args[])
     if(strcmp(args[1], "-r") == 0){
       char rembash[100];
       sprintf(rembash, "crontab -l | grep -v -w '%s'| crontab -", args[2]);
-      
+      system(rembash);
+      system("crontab -l > op.txt");
+      return 1;
     }
     char *cr_args[] = {"/usr/bin/crontab", "op.txt", NULL};
     FILE *fp;
 
-    fp = fopen ("op.txt", "w+");
-    fprintf(fp, "%s %s * * * cd %s ; rm -rf *\n", getMin(args[1]), getHour(args[1]), args[2]);
+
+    fp = fopen ("op.txt", "a");
+    fprintf(fp, "%s %s * * * cd %s ; rm -rf *\n", strtok(NULL, "."), strtok(args[1], "."), args[2]);
     fclose(fp);
-    //printf("%d", remove("op.txt"));
-    execvp(cr_args[0], cr_args);
+
+    execv(cr_args[0], cr_args);
     //0	2	*	*	*	cd <directory> ; rm -rf *
     return 1;
   }
+
+  if((strcmp(args[0], "crontab") == 0)&&(strcmp(args[1], "-r") == 0))
+    remove("op.txt");
+
   //read the path
   cf = popen("echo $PATH", "r");
   fgets(buf, sizeof(buf), cf);
@@ -232,17 +237,4 @@ int generic_execute(char *args[])
     token = strtok(NULL, ":"); //update destination to check
   }
   return -1;
-}
-
-char* getMin(char* args){
-  char *token;
-  token = strtok(args, ".");
-  token = strtok(NULL, ".");
-  return token;
-}
-
-char* getHour(char* args){
-  char *token;
-  token = strtok(args, ".");
-  return token;
 }
