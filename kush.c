@@ -15,6 +15,8 @@
 int parseCommand(char inputBuffer[], char *args[],int *background);
 int execute(char *args[]);
 int generic_execute(char *args[]);
+char* getMin(char *args);
+char* getHour(char *args);
 
 int main(void)
 {
@@ -24,26 +26,26 @@ int main(void)
   pid_t child;            		/* process id of the child process */
   int status;           		/* result from execv system call*/
   int shouldrun = 1;
-	
+
   int i, upper;
   printf("Kush ucuyor...\n");
   while (shouldrun) {            		/* Program terminates normally inside setup */
     background = 0;
-		
+
     shouldrun = parseCommand(inputBuffer,args,&background);       /* get next command */
-		
+
     if (strncmp(inputBuffer, "exit", 4) == 0)
       shouldrun = 0;     /* Exiting from kush*/
 
     if (shouldrun) {
       /*
-	After reading user input, the steps are 
+	After reading user input, the steps are
 	(1) Fork a child process using fork()
 	(2) the child process will invoke execv()
 	(3) if command included &, parent will invoke wait()
        */
       if (strcmp(args[0], "cd") == 0) {
-	if(chdir(args[1]) == -1)  printf("Directory does not exist: %s\n", args[1]); 
+	if(chdir(args[1]) == -1)  printf("Directory does not exist: %s\n", args[1]);
       } else { //child process required
 	child = fork();
 	if (child == 0) {
@@ -57,17 +59,17 @@ int main(void)
 	      waitpid(child);
 	}
       }
-    }	
-    
+    }
+
   }
   return 0;
 }
 
-/** 
+/**
  * The parseCommand function below will not return any value, but it will just: read
  * in the next command line; separate it into distinct arguments (using blanks as
  * delimiters), and set the args array entries to point to the beginning of what
- * will become null-terminated, C-style strings. 
+ * will become null-terminated, C-style strings.
  */
 
 int parseCommand(char inputBuffer[], char *args[],int *background)
@@ -77,47 +79,47 @@ int parseCommand(char inputBuffer[], char *args[],int *background)
       start,		/* index where beginning of next command parameter is */
       ct,	        /* index of where to place the next parameter into args[] */
       command_number;	/* index of requested command number */
-    
+
     ct = 0;
-	
+
     /* read what the user enters on the command line */
     do {
 	  printf("kush>");
 	  fflush(stdout);
-	  length = read(STDIN_FILENO,inputBuffer,MAX_LINE); 
+	  length = read(STDIN_FILENO,inputBuffer,MAX_LINE);
     }
     while (inputBuffer[0] == '\n'); /* swallow newline characters */
-	
+
     /**
      *  0 is the system predefined file descriptor for stdin (standard input),
      *  which is the user's screen in this case. inputBuffer by itself is the
      *  same as &inputBuffer[0], i.e. the starting address of where to store
      *  the command that is read, and length holds the number of characters
-     *  read in. inputBuffer is not a null terminated C-string. 
-     */    
+     *  read in. inputBuffer is not a null terminated C-string.
+     */
     start = -1;
     if (length == 0)
       exit(0);            /* ^d was entered, end of user command stream */
-    
-    /** 
-     * the <control><d> signal interrupted the read system call 
+
+    /**
+     * the <control><d> signal interrupted the read system call
      * if the process is in the read() system call, read returns -1
      * However, if this occurs, errno is set to EINTR. We can check this  value
-     * and disregard the -1 value 
+     * and disregard the -1 value
      */
 
     if ( (length < 0) && (errno != EINTR) ) {
       perror("error reading the command");
       exit(-1);           /* terminate with error code of -1 */
     }
-    
+
     /**
      * Parse the contents of inputBuffer
      */
-    
-    for (i=0;i<length;i++) { 
+
+    for (i=0;i<length;i++) {
       /* examine every character in the inputBuffer */
-      
+
       switch (inputBuffer[i]){
       case ' ':
       case '\t' :               /* argument separators */
@@ -128,16 +130,16 @@ int parseCommand(char inputBuffer[], char *args[],int *background)
 	inputBuffer[i] = '\0'; /* add a null char; make a C string */
 	start = -1;
 	break;
-	
+
       case '\n':                 /* should be the final char examined */
 	if (start != -1){
-	  args[ct] = &inputBuffer[start];     
+	  args[ct] = &inputBuffer[start];
 	  ct++;
 	}
 	inputBuffer[i] = '\0';
 	args[ct] = NULL; /* no more arguments to this command */
 	break;
-	
+
       default :             /* some other character */
 	if (start == -1)
 	  start = i;
@@ -147,18 +149,18 @@ int parseCommand(char inputBuffer[], char *args[],int *background)
 	}
       } /* end of switch */
     }    /* end of for */
-    
+
     /**
      * If we get &, don't enter it in the args array
      */
-    
+
     if (*background)
       args[--ct] = NULL;
-    
+
     args[ct] = NULL; /* just in case the input line was > 80 */
-    
+
     return 1;
-    
+
 } /* end of parseCommand routine */
 
 int execute(char *args[])
@@ -185,7 +187,7 @@ int execute(char *args[])
     return 1;
   }
   return 0;
-  
+
 }
 
 int generic_execute(char *args[])
@@ -193,14 +195,31 @@ int generic_execute(char *args[])
   char buf[400];
   FILE *cf;
   char *token;
-  
+
+  if(strcmp(args[0], "trash") == 0){
+    if(strcmp(args[1], "-r") == 0){
+      char rembash[100];
+      sprintf(rembash, "crontab -l | grep -v -w '%s'| crontab -", args[2]);
+      
+    }
+    char *cr_args[] = {"/usr/bin/crontab", "op.txt", NULL};
+    FILE *fp;
+
+    fp = fopen ("op.txt", "w+");
+    fprintf(fp, "%s %s * * * cd %s ; rm -rf *\n", getMin(args[1]), getHour(args[1]), args[2]);
+    fclose(fp);
+    //printf("%d", remove("op.txt"));
+    execvp(cr_args[0], cr_args);
+    //0	2	*	*	*	cd <directory> ; rm -rf *
+    return 1;
+  }
   //read the path
   cf = popen("echo $PATH", "r");
   fgets(buf, sizeof(buf), cf);
   pclose(cf);
-  
+
   buf[strlen(buf)-1] = '\0'; //erase the newline
-  
+
   token = strtok(buf, ":");
   while(token != NULL) {
     char exp_cmd[50]; //stores path+command
@@ -209,9 +228,21 @@ int generic_execute(char *args[])
     //if execution fail, continue; else return
     if(execv(exp_cmd, args) != -1)
       return 1;
-    
+
     token = strtok(NULL, ":"); //update destination to check
   }
   return -1;
 }
 
+char* getMin(char* args){
+  char *token;
+  token = strtok(args, ".");
+  token = strtok(NULL, ".");
+  return token;
+}
+
+char* getHour(char* args){
+  char *token;
+  token = strtok(args, ".");
+  return token;
+}
