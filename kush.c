@@ -66,7 +66,7 @@ int main(void)
 	  if (child == 0) {
 	    int fd;
 	    int srs = setup_redirect(args, &fd); //set arguments and open file if redirection exists	 	 	
-	  
+	    
 	    if (generic_execute(args) == -1)
 	      printf("Error: Unknown command!\n");
 	  
@@ -103,12 +103,11 @@ int main(void)
 	    exit(0);
 	  } 
 	  else { //parent
-	    
+	    printf("%d\n", child2);
 	    if (!background) {
-	     wait(&status);
+	      wait(NULL);
 	     }
-	    printf("terimation :%d\n", WIFEXITED(status));
-	   
+	    // kill(child2, SIGTERM);
 	  }
 	}
       }
