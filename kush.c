@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <string.h>
 #include <fcntl.h>
+#include <sys/signal.h>
 
 #define MAX_LINE       80 /* 80 chars per line, per command, should be enough. */
 
@@ -47,37 +48,78 @@ int main(void)
 	(1) Fork a child process using fork()
 	(2) the child process will invoke execv()
 	(3) if command included &, parent will invoke wait()
-       */
+      */
        
+      
       if (strcmp(args[0], "cd") == 0) {
 	if(chdir(args[1]) == -1) 
 	  printf("Directory does not exist: %s\n", args[1]);
-      } else { //child process required
-	child = fork();
-	if (child == 0) {
-	  int fd;
-	  int srs = setup_redirect(args, &fd); //set arguments and open file if redirection exists
+      }
+      else { //child process required
+	//PIPES
+	char *pargs[MAX_LINE/2+1];
+	int piped = pipe_args(args, pargs);
+	int pipe_fd[2];
+	
+	if (!piped) {
+	  child = fork();
+	  if (child == 0) {
+	    int fd;
+	    int srs = setup_redirect(args, &fd); //set arguments and open file if redirection exists	 	 	
 	  
+	    if (generic_execute(args) == -1)
+	      printf("Error: Unknown command!\n");
 	  
-
-	  if (generic_execute(args) == -1) {
-	    printf("Error: Unknown command!\n");
+	    setdown_redirect(&fd, srs); //close the file if opened
+	    exit(0); //exit child.
 	  }
-	  setdown_redirect(&fd, srs); //close the file if opened
-	  exit(0); //exit child.
-	} else {
-	  //printf("%d\n", background);
-	  // printf("here\n");
-	  if (!background)
-	      waitpid(child);
+	  else {
+	    //printf("%d\n", background);
+	    // printf("here\n");
+	    int status;
+	    if (!background)
+	      waitpid(child, &status, 0);
+	  }
+	}
+	else { //if the program is piped
+	  
+	  pipe(pipe_fd);
+	  child = fork();
+	  if (child == 0) {
+	    int child2 = fork();
+	    if (child2 == 0) { //child2
+	     
+	      //printf("%s\n", pargs[1]);
+	      dup2(pipe_fd[0], 0);
+	      close(pipe_fd[1]);
+	      if (generic_execute(pargs) == -1)
+		printf("Error: Unknown command after |\n");
+              exit(0);	     	     
+            } 
+	    else { //child
+	      int status;
+	      dup2(pipe_fd[1], 1);
+	      close(pipe_fd[0]);
+	      if (generic_execute(args) == -1)
+		printf("Error: Unknown command before |\n");
+              waitpid(child2, &status, 0);
+              exit(0);
+           }
+            
+//kill(child2, SIGTERM);
+	   
+          } else { //parent
+	    int status;
+	    if (!background) {
+              waitpid(child, &status, 0);
+	    }
+	    printf("terimation :%d\n", WIFEXITED(status));
+	  }
 	}
       }
-     
-      
     }
-    
   }
-  return 0;
+   return 0;
 }
 
 /** 
@@ -241,7 +283,7 @@ int setup_redirect(char *args[], int *fd)
   return -1;
 }
 
-int pipe_args(char *args[], char *pipe_args[])
+int pipe_args(char *args[], char *pargs[])
 {
   int pipe_index = 0;
   int i=0, j, k;
@@ -259,10 +301,10 @@ int pipe_args(char *args[], char *pipe_args[])
   j = pipe_index+1;
   k = 0;
   while (args[j] != NULL) {
-    pipe_args[k] = args[j];
+    pargs[k] = args[j];
     j++;
     k++;
   }
-  
+  pargs[k] = NULL;
   return k;
 }
