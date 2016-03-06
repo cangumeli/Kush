@@ -82,12 +82,11 @@ int main(void)
 	  }
 	}
 	else { //if the program is piped
-	  int child2;
+	  pid_t child2;
 	  pipe(pipe_fd);
 	  child = fork();
-	  child2 = (child == 0) ? -2 : fork();
 	  
-	  if (child2 == 0) { //child2
+	  if (child == 0) { //child
 	     dup2(pipe_fd[0], 0);
 	      close(pipe_fd[1]);
 	      if (generic_execute(pargs) == -1)
@@ -95,19 +94,19 @@ int main(void)
 	      exit(0);
               
 	  }
-	  else if (child2 == -2) { //child
-	    dup2(pipe_fd[1], 1);
-	    close(pipe_fd[0]);
-	    if (generic_execute(args) == -1)
-	      printf("Error: Unknown command before |\n");
-	    exit(0);
-	  } 
-	  else { //parent
-	    printf("%d\n", child2);
-	    if (!background) {
+	  else  { //parent
+	    child2 = fork();
+	    if (child2 == 0) {
+	      dup2(pipe_fd[1], 1);
+	      close(pipe_fd[0]);
+	      if (generic_execute(args) == -1)
+		printf("Error: Unknown command before |\n");
+	      exit(0);
+	    } else {
 	      wait(NULL);
-	     }
-	    // kill(child2, SIGTERM);
+	    }
+	 
+	    kill(child2, SIGTERM);
 	  }
 	}
       }
@@ -225,6 +224,9 @@ int generic_execute(char *args[])
   FILE *cf;
   char *token;
   
+  if (strcmp(args[0], "car") == 0) {
+   return  compile_and_run(args);
+  }
   //read the path
   cf = popen("echo $PATH", "r");
   fgets(buf, sizeof(buf), cf);
@@ -245,6 +247,65 @@ int generic_execute(char *args[])
     token = strtok(NULL, ":"); //update destination to check
   }
   return -1;
+}
+
+int compile_and_run(char *args[])
+{
+  char filename[MAX_LINE];
+  char * token;
+  char *name;
+  
+  if (args[1] == NULL){
+    printf("car: Not enough input arguments\n");
+    return -2;
+  } 
+  
+  strcpy(filename, args[1]);
+  name = strtok(filename, ".");
+  token = strtok(NULL, ".");
+  if (token == NULL) {
+    printf("car: Input extension is missing\n");
+  }
+  
+  if (strcmp(token, "py") == 0) { //python
+    char *exe_args[] = {"python", args[1], NULL};
+    return  generic_execute(exe_args);
+  }
+  else if (strcmp(token, "c") == 0 || strcmp(token, "cpp") == 0) { //c & c++
+    char *exe_args[] = {(strlen(token) == 1) ? "gcc" : "g++",
+			args[1],
+			NULL};
+    pid_t c1 = fork();
+    if (c1 == 0) {
+      if (generic_execute(exe_args) == -1) 
+	printf("%s not found in your path\n", exe_args[0]);
+      exit(0);
+    } else {
+      wait(NULL);
+      system("./a.out");
+    }
+    return 1;
+  }
+  else if (strcmp(token, "java") == 0) { //java
+    char *exe_args[] = {"javac", args[1], NULL};
+    pid_t ch = fork();
+    if (ch == 0) {
+      if (generic_execute(exe_args) == -1)
+	printf("javac not found in path\n");
+      exit(0);
+    } else {
+      char run_str[MAX_LINE-5];
+      wait(NULL);
+      printf("%s\n", name);
+      sprintf(run_str, "java %s", name);
+      system(run_str);
+    }
+    return 2;
+  }
+  else {
+    printf("Unknown language %s\n", token);
+    return -1;
+  }
 }
 
 int setup_redirect(char *args[], int *fd)
