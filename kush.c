@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <string.h>
 #include <fcntl.h>
+#include <sys/signal.h>
 
 #define MAX_LINE       80 /* 80 chars per line, per command, should be enough. */
 
@@ -47,29 +48,66 @@ int main(void)
 	(1) Fork a child process using fork()
 	(2) the child process will invoke execv()
 	(3) if command included &, parent will invoke wait()
-       */
+      */
        
+      
       if (strcmp(args[0], "cd") == 0) {
 	if(chdir(args[1]) == -1) 
 	  printf("Directory does not exist: %s\n", args[1]);
-      } else { //child process required
-	child = fork();
-	if (child == 0) {
-	  int fd;
-	  int srs = setup_redirect(args, &fd); //set arguments and open file if redirection exists
+      }
+      else { //child process required
+	//PIPES
+	char *pargs[MAX_LINE/2+1];
+	int piped = pipe_args(args, pargs);
+	int pipe_fd[2];
+	
+	if (!piped) {
+	  child = fork();
+	  if (child == 0) {
+	    int fd;
+	    int srs = setup_redirect(args, &fd); //set arguments and open file if redirection exists	 	 	
+	    
+	    if (generic_execute(args) == -1)
+	      printf("Error: Unknown command!\n");
 	  
-	  
-
-	  if (generic_execute(args) == -1) {
-	    printf("Error: Unknown command!\n");
+	    setdown_redirect(&fd, srs); //close the file if opened
+	    exit(0); //exit child.
 	  }
-	  setdown_redirect(&fd, srs); //close the file if opened
-	  exit(0); //exit child.
-	} else {
-	  //printf("%d\n", background);
-	  // printf("here\n");
-	  if (!background)
-	      waitpid(child);
+	  else {
+	    //printf("%d\n", background);
+	    // printf("here\n");
+	    int status;
+	    if (!background)
+	      waitpid(child, &status, 0);
+	  }
+	}
+	else { //if the program is piped
+	  pid_t child2;
+	  pipe(pipe_fd);
+	  child = fork();
+	  
+	  if (child == 0) { //child
+	     dup2(pipe_fd[0], 0);
+	      close(pipe_fd[1]);
+	      if (generic_execute(pargs) == -1)
+		printf("Error: Unknown command after |\n");
+	      exit(0);
+              
+	  }
+	  else  { //parent
+	    child2 = fork();
+	    if (child2 == 0) {
+	      dup2(pipe_fd[1], 1);
+	      close(pipe_fd[0]);
+	      if (generic_execute(args) == -1)
+		printf("Error: Unknown command before |\n");
+	      exit(0);
+	    } else {
+	      wait(NULL);
+	    }
+	 
+	    kill(child2, SIGTERM);
+	  }
 	}
       }
      
@@ -77,7 +115,7 @@ int main(void)
     }
     
   }
-  return 0;
+   return 0;
 }
 
 /** 
@@ -209,6 +247,8 @@ int generic_execute(char *args[])
     execv(cr_args[0], cr_args);
     //0	2	*	*	*	cd <directory> ; rm -rf *
     return 1;
+  }else if (strcmp(args[0], "car") == 0) {
+   return  compile_and_run(args);
   }
 
   if((strcmp(args[0], "crontab") == 0)&&(strcmp(args[1], "-r") == 0))
@@ -234,6 +274,65 @@ int generic_execute(char *args[])
     token = strtok(NULL, ":"); //update destination to check
   }
   return -1;
+}
+
+int compile_and_run(char *args[])
+{
+  char filename[MAX_LINE];
+  char * token;
+  char *name;
+  
+  if (args[1] == NULL){
+    printf("car: Not enough input arguments\n");
+    return -2;
+  } 
+  
+  strcpy(filename, args[1]);
+  name = strtok(filename, ".");
+  token = strtok(NULL, ".");
+  if (token == NULL) {
+    printf("car: Input extension is missing\n");
+  }
+  
+  if (strcmp(token, "py") == 0) { //python
+    char *exe_args[] = {"python", args[1], NULL};
+    return  generic_execute(exe_args);
+  }
+  else if (strcmp(token, "c") == 0 || strcmp(token, "cpp") == 0) { //c & c++
+    char *exe_args[] = {(strlen(token) == 1) ? "gcc" : "g++",
+			args[1],
+			NULL};
+    pid_t c1 = fork();
+    if (c1 == 0) {
+      if (generic_execute(exe_args) == -1) 
+	printf("%s not found in your path\n", exe_args[0]);
+      exit(0);
+    } else {
+      wait(NULL);
+      system("./a.out");
+    }
+    return 1;
+  }
+  else if (strcmp(token, "java") == 0) { //java
+    char *exe_args[] = {"javac", args[1], NULL};
+    pid_t ch = fork();
+    if (ch == 0) {
+      if (generic_execute(exe_args) == -1)
+	printf("javac not found in path\n");
+      exit(0);
+    } else {
+      char run_str[MAX_LINE-5];
+      wait(NULL);
+      printf("%s\n", name);
+      sprintf(run_str, "java %s", name);
+      system(run_str);
+    }
+    return 2;
+  }
+  else {
+    printf("Unknown language %s\n", token);
+    return -1;
+  }
 }
 
 int setup_redirect(char *args[], int *fd)
@@ -266,7 +365,7 @@ int setup_redirect(char *args[], int *fd)
   return -1;
 }
 
-int pipe_args(char *args[], char *pipe_args[])
+int pipe_args(char *args[], char *pargs[])
 {
   int pipe_index = 0;
   int i=0, j, k;
@@ -284,10 +383,10 @@ int pipe_args(char *args[], char *pipe_args[])
   j = pipe_index+1;
   k = 0;
   while (args[j] != NULL) {
-    pipe_args[k] = args[j];
+    pargs[k] = args[j];
     j++;
     k++;
   }
-  
+  pargs[k] = NULL;
   return k;
 }
