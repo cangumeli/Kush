@@ -76,9 +76,9 @@ int main(void)
 	  else {
 	    //printf("%d\n", background);
 	    // printf("here\n");
-	    int status;
+	     
 	    if (!background)
-	      waitpid(child, &status, 0);
+	      waitpid(child, &status, 0);     
 	  }
 	}
 	else { //if the program is piped
@@ -87,6 +87,7 @@ int main(void)
 	  child = fork();
 	  
 	  if (child == 0) { //child
+	    //pipe(pipe_fd);
 	     dup2(pipe_fd[0], 0);
 	      close(pipe_fd[1]);
 	      if (generic_execute(pargs) == -1)
@@ -97,16 +98,22 @@ int main(void)
 	  else  { //parent
 	    child2 = fork();
 	    if (child2 == 0) {
+	      //pipe(pipe_fd);
 	      dup2(pipe_fd[1], 1);
 	      close(pipe_fd[0]);
 	      if (generic_execute(args) == -1)
 		printf("Error: Unknown command before |\n");
 	      exit(0);
 	    } else {
-	      wait(NULL);
+	      wait(NULL);	     
 	    }
-	 
-	    kill(child2, SIGTERM);
+	    //printf("here...\n");
+	    // close(pipe_fd[0]);
+	    close(pipe_fd[0]);
+	    close(pipe_fd[1]);
+	    wait(NULL);
+	    //printf("here...\n");
+	    // kill(child2, SIGTERM);
 	  }
 	}
       }
