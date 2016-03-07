@@ -30,29 +30,29 @@ int main(void)
   pid_t child;            		/* process id of the child process */
   int status;           		/* result from execv system call*/
   int shouldrun = 1;
-	
+
   int i, upper;
   printf("Kush ucuyor...\n");
   while (shouldrun) {
     /* Program terminates normally inside setup */
     background = 0;
-    
+
     shouldrun = parseCommand(inputBuffer,args,&background);       /* get next command */
-   
+
     if (strncmp(inputBuffer, "exit", 4) == 0)
       shouldrun = 0;     /* Exiting from kush*/
 
     if (shouldrun) {
       /*
-	After reading user input, the steps are 
+	After reading user input, the steps are
 	(1) Fork a child process using fork()
 	(2) the child process will invoke execv()
 	(3) if command included &, parent will invoke wait()
       */
-       
-      
+
+
       if (strcmp(args[0], "cd") == 0) {
-	if(chdir(args[1]) == -1) 
+	if(chdir(args[1]) == -1)
 	  printf("Directory does not exist: %s\n", args[1]);
       }
       else { //child process required
@@ -60,32 +60,32 @@ int main(void)
 	char *pargs[MAX_LINE/2+1];
 	int piped = pipe_args(args, pargs);
 	int pipe_fd[2];
-	
+
 	if (!piped) {
 	  child = fork();
 	  if (child == 0) {
 	    int fd;
-	    int srs = setup_redirect(args, &fd); //set arguments and open file if redirection exists	 	 	
-	    
+	    int srs = setup_redirect(args, &fd); //set arguments and open file if redirection exists
+
 	    if (generic_execute(args) == -1)
 	      printf("Error: Unknown command!\n");
-	  
+
 	    setdown_redirect(&fd, srs); //close the file if opened
 	    exit(0); //exit child.
 	  }
 	  else {
 	    //printf("%d\n", background);
 	    // printf("here\n");
-	     
+
 	    if (!background)
-	      waitpid(child, &status, 0);     
+	      waitpid(child, &status, 0);
 	  }
 	}
 	else { //if the program is piped
 	  pid_t child2;
 	  pipe(pipe_fd);
 	  child = fork();
-	  
+
 	  if (child == 0) { //child
 	    //pipe(pipe_fd);
 	     dup2(pipe_fd[0], 0);
@@ -93,7 +93,7 @@ int main(void)
 	      if (generic_execute(pargs) == -1)
 		printf("Error: Unknown command after |\n");
 	      exit(0);
-              
+
 	  }
 	  else  { //parent
 	    child2 = fork();
@@ -105,7 +105,7 @@ int main(void)
 		printf("Error: Unknown command before |\n");
 	      exit(0);
 	    } else {
-	      wait(NULL);	     
+	      wait(NULL);
 	    }
 	    //printf("here...\n");
 	    // close(pipe_fd[0]);
@@ -117,19 +117,19 @@ int main(void)
 	  }
 	}
       }
-     
-      
+
+
     }
-    
+
   }
    return 0;
 }
 
-/** 
+/**
  * The parseCommand function below will not return any value, but it will just: read
  * in the next command line; separate it into distinct arguments (using blanks as
  * delimiters), and set the args array entries to point to the beginning of what
- * will become null-terminated, C-style strings. 
+ * will become null-terminated, C-style strings.
  */
 
 int parseCommand(char inputBuffer[], char *args[],int *background)
@@ -139,47 +139,47 @@ int parseCommand(char inputBuffer[], char *args[],int *background)
       start,		/* index where beginning of next command parameter is */
       ct,	        /* index of where to place the next parameter into args[] */
       command_number;	/* index of requested command number */
-    
+
     ct = 0;
-	
+
     /* read what the user enters on the command line */
     do {
 	  printf("kush>");
 	  fflush(stdout);
-	  length = read(STDIN_FILENO,inputBuffer,MAX_LINE); 
+	  length = read(STDIN_FILENO,inputBuffer,MAX_LINE);
     }
     while (inputBuffer[0] == '\n'); /* swallow newline characters */
-	
+
     /**
      *  0 is the system predefined file descriptor for stdin (standard input),
      *  which is the user's screen in this case. inputBuffer by itself is the
      *  same as &inputBuffer[0], i.e. the starting address of where to store
      *  the command that is read, and length holds the number of characters
-     *  read in. inputBuffer is not a null terminated C-string. 
-     */    
+     *  read in. inputBuffer is not a null terminated C-string.
+     */
     start = -1;
     if (length == 0)
       exit(0);            /* ^d was entered, end of user command stream */
-    
-    /** 
-     * the <control><d> signal interrupted the read system call 
+
+    /**
+     * the <control><d> signal interrupted the read system call
      * if the process is in the read() system call, read returns -1
      * However, if this occurs, errno is set to EINTR. We can check this  value
-     * and disregard the -1 value 
+     * and disregard the -1 value
      */
 
     if ( (length < 0) && (errno != EINTR) ) {
       perror("error reading the command");
       exit(-1);           /* terminate with error code of -1 */
     }
-    
+
     /**
      * Parse the contents of inputBuffer
      */
-    
-    for (i=0;i<length;i++) { 
+
+    for (i=0;i<length;i++) {
       /* examine every character in the inputBuffer */
-      
+
       switch (inputBuffer[i]){
       case ' ':
       case '\t' :               /* argument separators */
@@ -190,16 +190,16 @@ int parseCommand(char inputBuffer[], char *args[],int *background)
 	inputBuffer[i] = '\0'; /* add a null char; make a C string */
 	start = -1;
 	break;
-	
+
       case '\n':                 /* should be the final char examined */
 	if (start != -1){
-	  args[ct] = &inputBuffer[start];     
+	  args[ct] = &inputBuffer[start];
 	  ct++;
 	}
 	inputBuffer[i] = '\0';
 	args[ct] = NULL; /* no more arguments to this command */
 	break;
-	
+
       default :             /* some other character */
 	if (start == -1)
 	  start = i;
@@ -209,24 +209,24 @@ int parseCommand(char inputBuffer[], char *args[],int *background)
 	}
       } /* end of switch */
     }    /* end of for */
-    
+
     /**
      * If we get &, don't enter it in the args array
      */
-    
+
     if (*background)
       args[--ct] = NULL;
-    
+
     args[ct] = NULL; /* just in case the input line was > 80 */
-    
+
     return 1;
-    
+
 } /* end of parseCommand routine */
 
 int execute(char *args[])
 {
 
-  
+
 }
 
 int generic_execute(char *args[])
@@ -265,9 +265,9 @@ int generic_execute(char *args[])
   cf = popen("echo $PATH", "r");
   fgets(buf, sizeof(buf), cf);
   pclose(cf);
-  
+
   buf[strlen(buf)-1] = '\0'; //erase the newline
-  
+
   token = strtok(buf, ":");
 
   while(token != NULL) {
@@ -277,7 +277,7 @@ int generic_execute(char *args[])
     //if execution fail, continue; else return
     if(execv(exp_cmd, args) != -1)
       return 1;
-    
+
     token = strtok(NULL, ":"); //update destination to check
   }
   return -1;
@@ -288,19 +288,19 @@ int compile_and_run(char *args[])
   char filename[MAX_LINE];
   char * token;
   char *name;
-  
+
   if (args[1] == NULL){
     printf("car: Not enough input arguments\n");
     return -2;
-  } 
-  
+  }
+
   strcpy(filename, args[1]);
   name = strtok(filename, ".");
   token = strtok(NULL, ".");
   if (token == NULL) {
     printf("car: Input extension is missing\n");
   }
-  
+
   if (strcmp(token, "py") == 0) { //python
     char *exe_args[] = {"python", args[1], NULL};
     return  generic_execute(exe_args);
@@ -311,7 +311,7 @@ int compile_and_run(char *args[])
 			NULL};
     pid_t c1 = fork();
     if (c1 == 0) {
-      if (generic_execute(exe_args) == -1) 
+      if (generic_execute(exe_args) == -1)
 	printf("%s not found in your path\n", exe_args[0]);
       exit(0);
     } else {
@@ -346,12 +346,12 @@ int setup_redirect(char *args[], int *fd)
 {
   char filename[MAX_LINE];
   int size = 0;
-  
+
   while (args[size] != NULL) size++;
   // printf("%d\n", size);
- 
+
   if(size < 3) return -1;
-  
+
   if (strcmp(args[size-2], ">") == 0) {
     strcpy(filename, args[size-1]);
     // printf("%s\n", filename);
@@ -368,7 +368,7 @@ int setup_redirect(char *args[], int *fd)
     dup2(*fd, STDOUT_FILENO);
     return 1;
   }
-  
+
   return -1;
 }
 
@@ -383,7 +383,7 @@ int pipe_args(char *args[], char *pargs[])
     }
     i++;
   }
-  if (pipe_index == 0) return 0;  
+  if (pipe_index == 0) return 0;
 
   args[pipe_index] = NULL;
 
