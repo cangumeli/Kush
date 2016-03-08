@@ -35,7 +35,8 @@ int myfileinfo_init(void)
 	INIT_LIST_HEAD(&tt.children);
 	printk(KERN_INFO "SchedInfo is Loading...\n");
 
-
+	if(processID == -1)
+		return 0;
 
 	for_each_process(task){
 		if (task->pid == processID) {
@@ -47,7 +48,7 @@ int myfileinfo_init(void)
 	printk("Priority       : %d\n", task->prio);
 	printk("Static Priority: %d\n", task->static_prio);
 	printk("Parent PID     : %d\n", task->parent->pid);
-	//printk("Time slice     : %d\n", task->time_slice);
+	printk("Time slice     : %d\n", task->rt.time_slice);
 	printk("Policy         : %d\n", task->policy);
 	printk("User ID        : %d\n", task->cred->uid);
 
@@ -61,6 +62,10 @@ int myfileinfo_init(void)
 		}
 	}
 
+	if(processSPolicy == -1 || processPrio == -1)
+		return 0;
+
+		
 
 	return 0;
 }
