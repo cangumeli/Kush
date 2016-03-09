@@ -88,8 +88,11 @@ int main(void)
 
 	  if (child == 0) { //child
 	    //pipe(pipe_fd);
+	    int fd, srs;
 	     dup2(pipe_fd[0], 0);
-	      close(pipe_fd[1]);
+	     close(pipe_fd[1]);
+	     setup_redirect(pargs, &fd);
+	     setdown_redirect(&fd, srs);
 	      if (generic_execute(pargs) == -1)
 		printf("Error: Unknown command after |\n");
 	      exit(0);
