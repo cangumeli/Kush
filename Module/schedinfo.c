@@ -44,7 +44,7 @@ int myfileinfo_init(void)
 	printk("Time slice     : %d\n", task->rt.time_slice);
 	printk("Policy         : %d", task->policy);
 	get_pol_name(task->policy);
-	printk("User ID        : %d\n", task->cred->uid);
+	printk("User ID        : %d\n", task->cred->uid.val);
 
 
 
@@ -78,7 +78,7 @@ int myfileinfo_init(void)
 	printk("Time slice     : %d\n", task->rt.time_slice);
 	printk("Policy         : %d", task->policy);
 	get_pol_name(task->policy);
-	printk("User ID        : %d\n", task->cred->uid);
+	printk("User ID        : %d\n", task->cred->uid.val);
 
 
 
