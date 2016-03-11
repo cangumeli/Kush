@@ -66,11 +66,11 @@ int main(void)
 	  if (child == 0) {
 	    int fd;
 	    int srs = setup_redirect(args, &fd); //set arguments and open file if redirection exists
-
+	    
+	    setdown_redirect(&fd, srs); //close the file if opened
 	    if (generic_execute(args) == -1)
 	      printf("Error: Unknown command!\n");
-
-	    setdown_redirect(&fd, srs); //close the file if opened
+	    
 	    exit(0); //exit child.
 	  }
 	  else {
@@ -88,8 +88,11 @@ int main(void)
 
 	  if (child == 0) { //child
 	    //pipe(pipe_fd);
+	    int fd, srs;
 	     dup2(pipe_fd[0], 0);
-	      close(pipe_fd[1]);
+	     close(pipe_fd[1]);
+	     setup_redirect(pargs, &fd);
+	     setdown_redirect(&fd, srs);
 	      if (generic_execute(pargs) == -1)
 		printf("Error: Unknown command after |\n");
 	      exit(0);
@@ -307,6 +310,8 @@ int compile_and_run(char *args[])
   }
   else if (strcmp(token, "c") == 0 || strcmp(token, "cpp") == 0) { //c & c++
     char *exe_args[] = {(strlen(token) == 1) ? "gcc" : "g++",
+			"-o",
+			name,
 			args[1],
 			NULL};
     pid_t c1 = fork();
@@ -315,8 +320,10 @@ int compile_and_run(char *args[])
 	printf("%s not found in your path\n", exe_args[0]);
       exit(0);
     } else {
+      char run_str[MAX_LINE-4];
       wait(NULL);
-      system("./a.out");
+      sprintf(run_str, "./%s", name);
+      system(run_str);
     }
     return 1;
   }
@@ -366,6 +373,7 @@ int setup_redirect(char *args[], int *fd)
     args[size-1] = args[size-2] = NULL;
     *fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
     dup2(*fd, STDOUT_FILENO);
+    
     return 1;
   }
 
