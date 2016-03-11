@@ -22,6 +22,8 @@ int setdown_redirect(int *fd, int sr_status) { if (sr_status >= 0) close(*fd); }
 
 int pipe_args(char *args[], char *pipe_args[]);
 
+int kernel_module_pid = -1;
+
 int main(void)
 {
   char inputBuffer[MAX_LINE]; 	        /* buffer to hold the command entered */
@@ -52,9 +54,36 @@ int main(void)
 
 
       if (strcmp(args[0], "cd") == 0) {
-	if(chdir(args[1]) == -1)
-	  printf("Directory does not exist: %s\n", args[1]);
+	       if(chdir(args[1]) == -1)
+	        printf("Directory does not exist: %s\n", args[1]);
       }
+
+      else if (strcmp(args[0], "schedInfo") == 0) {
+        chdir("Module");
+        generic_execute(args);
+        chdir("..");
+      }
+      //   /* code */
+      //   int kpipe[2];
+      //   pipe(kpipe);
+      //   child = fork();
+      //   if (child == 0) {
+      //     char new_pid[10];
+      //     sprintf(new_pid, "%d", generic_execute(args));
+      //     close(kpipe[0]);
+      //     write(kpipe[1], new_pid, 10);
+      //     close(kpipe[1]);
+      //   } else {
+      //     /* code */
+      //     char new_pid[10];
+      //     int val;
+      //     close(kpipe[1]);
+      //     read(kpipe[0], new_pid, 10);
+      //     close(kpipe[0]);
+      //     val = atoi(new_pid);
+      //     if (val > 0) kernel_module_pid = val;
+      //   }
+      // }
       else { //child process required
 	//PIPES
 	char *pargs[MAX_LINE/2+1];
@@ -66,11 +95,11 @@ int main(void)
 	  if (child == 0) {
 	    int fd;
 	    int srs = setup_redirect(args, &fd); //set arguments and open file if redirection exists
-	    
+
 	    setdown_redirect(&fd, srs); //close the file if opened
 	    if (generic_execute(args) == -1)
 	      printf("Error: Unknown command!\n");
-	    
+
 	    exit(0); //exit child.
 	  }
 	  else {
@@ -91,7 +120,7 @@ int main(void)
 	    int fd, srs;
 	     dup2(pipe_fd[0], 0);
 	     close(pipe_fd[1]);
-	     setup_redirect(pargs, &fd);
+	     srs = setup_redirect(pargs, &fd);
 	     setdown_redirect(&fd, srs);
 	      if (generic_execute(pargs) == -1)
 		printf("Error: Unknown command after |\n");
@@ -102,8 +131,13 @@ int main(void)
 	    child2 = fork();
 	    if (child2 == 0) {
 	      //pipe(pipe_fd);
+        int fd, srs;
+
+
 	      dup2(pipe_fd[1], 1);
 	      close(pipe_fd[0]);
+        srs = setup_redirect(args, &fd);
+        setdown_redirect(&fd, srs);
 	      if (generic_execute(args) == -1)
 		printf("Error: Unknown command before |\n");
 	      exit(0);
@@ -125,6 +159,12 @@ int main(void)
     }
 
   }
+  if (kernel_module_pid != -1) {
+    char *exit_args[] = {"schedInfo", "-r"};
+    generic_execute(exit_args);
+  }
+
+
    return 0;
 }
 
@@ -237,10 +277,66 @@ int generic_execute(char *args[])
   char buf[400];
   FILE *cf;
   char *token;
+  // if (strcmp(args[0], "schedInfo")==0) {
+  //   /* code */
+  //   char pidstr[30];
+  //   char polstr[30];
+  //   char priostr[30];
+  //   char nargs[100];
+  //   sprintf(pidstr, "processID="
+  // }
+  // //system("echo $PWD");
+  if(strcmp(args[0], "schedInfo")==0){
+
+    //sudo insmod schedInfo processID=PID processSPolicy=policy processPrio=priority
+    char nargs[MAX_LINE*2];
+    int test;
+
+    if(strcmp(args[1], "-r")==0){
+      if(kernel_module_pid == -1){
+        printf("The kernel module does not exists!\n");
+        return -1;
+      }
+      system("sudo rmmod schedinfo");
+      printf("The kernel module is removed!\n");
+      kernel_module_pid = -1;
+      return 0;
+    }
+
+    if (args[1] == NULL ) {
+      sprintf(nargs, "sudo insmod schedinfo.ko");
+    }else if(args[2] == NULL){
+      sprintf(nargs, "sudo insmod schedinfo.ko processID=%s",
+    args[1]);
+    }else if(args[3] == NULL){
+      sprintf(nargs, "sudo insmod schedinfo.ko processID=%s processSPolicy=%s",
+    args[1], args[2]);
+  }else{
+    sprintf(nargs, "sudo insmod schedinfo.ko processID=%s processSPolicy=%s processPrio=%s",
+  args[1], args[2], args[3]);
+  }
+
+    if(kernel_module_pid == atoi(args[1])){
+      printf("The kernel module is aldready loaded!\n");
+      return 0;
+    }
+
+    if(kernel_module_pid != -1)
+      system("sudo rmmod schedinfo");
+
+    test = system(nargs);
+    if(test != -1){
+      printf("The module is loaded\n");
+      kernel_module_pid = atoi(args[1]);
+    }else{
+      printf("Insmod operation exit code: %d\n", test);
+    }
+    return 0;
+  }
 
   if(strcmp(args[0], "trash") == 0){
     if(strcmp(args[1], "-r") == 0){
-      char rembash[100];
+      char rembash[MAX_LINE*2];
       sprintf(rembash, "crontab -l | grep -v -w '%s'| crontab -", args[2]);
       system(rembash);
       system("crontab -l > op.txt");
@@ -373,7 +469,7 @@ int setup_redirect(char *args[], int *fd)
     args[size-1] = args[size-2] = NULL;
     *fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
     dup2(*fd, STDOUT_FILENO);
-    
+
     return 1;
   }
 

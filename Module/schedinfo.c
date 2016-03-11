@@ -25,16 +25,25 @@ int myfileinfo_init(void)
 	struct sched_param param;
 //struct list children;
 	struct list_head *p;
+	int id_found = -1;
 	INIT_LIST_HEAD(&tt.children);
 	printk(KERN_INFO "SchedInfo is Loading...\n");
 
-	if(processID == -1)
+	if(processID == -1) {
+		printk("Process id is not provided.\n");
 		return 0;
+	}
 
 	for_each_process(task){
 		if (task->pid == processID) {
+			id_found = 1;
 			break;
 		}
+	}
+	if (id_found == -1) {
+		//printk("here\n");
+		printk("Process not found with id %d\n", processID);
+		return 0;
 	}
 	printk("Executable Name: %s\n", task->comm);
 	printk("Process ID     : %d\n", task->pid);
@@ -56,17 +65,21 @@ int myfileinfo_init(void)
 		}
 	}
 
-	if(processSPolicy == -1 || processPrio == -1)
+	if(processSPolicy == -1 && processPrio == -1)
 		return 0;
 
-		if(processSPolicy == -1)
+		if(processSPolicy == -1){
 			processSPolicy = task->policy;
+		}
 
 		if (processPrio != -1){
 			param.sched_priority = processPrio;
+		}else{
+			param.sched_priority = task->prio;
 		}
 
-		printk("HERERERERE %d\n", sched_setscheduler(task, processSPolicy, & param));
+    sched_setscheduler(task, processSPolicy, &param);
+		printk("\nChanging process scheduler info: %d\n", sched_setscheduler(task, processSPolicy, & param));
 
 
 
