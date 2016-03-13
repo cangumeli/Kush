@@ -1,0 +1,6 @@
+can.txt
+kush
+kush.c
+kush.c~
+Makefile
+schedinfo.c

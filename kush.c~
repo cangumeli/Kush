@@ -14,44 +14,13 @@
 #define MAX_LINE       80 /* 80 chars per line, per command, should be enough. */
 
 int parseCommand(char inputBuffer[], char *args[],int *background);
-
-
-/*Executes the schedInfo related commands*/
-int kernel_execute(char *args[]);
-
-
-/*The execution strategy for commands in the child processes
-Takes parsed arguments array as the input, locates it in the path and
-runs it using execv.
-Additional strategies are applied for custom commands car and thrash*/
+int execute(char *args[]);
 int generic_execute(char *args[]);
 
-
-/*Implementation of compile_and_run(car) command
-Allows compilation and execution of a C,C++,Java or Python
-program with a single command.
-Called within generic_execute.
-*/
-int compile_and_run(char *args[]);
-
-
-/*Edit args and redirects the standard input to the file fd.
-Returns 0 for overwrite, 1 for append, -1 for no redirection*/
 int setup_redirect(char *args[], int *fd);
-
-
-/*Closes the redirected file fd if sr_status signals file is opened.*/
 int setdown_redirect(int *fd, int sr_status) { if (sr_status >= 0) close(*fd); }
 
-
-/*Divides arguments array into 2:
- -args becomes arguments before pipe(|)
- -pargs becomes arguments after pipe(|)
-Returns 0 if no pipes are found in the command, 
-index of | otherwise*/
-int pipe_args(char *args[], char *pargs[]);
-
-int kernel_module_pid = -1; /*pid of the last query of schedInfo, -1 if no queries made.*/
+int pipe_args(char *args[], char *pipe_args[]);
 
 int main(void)
 {
@@ -74,94 +43,84 @@ int main(void)
       shouldrun = 0;     /* Exiting from kush*/
 
     if (shouldrun) {
-     
-      /*EXECUTION OF 'CD' COMMAND*/
+      /*
+	After reading user input, the steps are
+	(1) Fork a child process using fork()
+	(2) the child process will invoke execv()
+	(3) if command included &, parent will invoke wait()
+      */
+
+
       if (strcmp(args[0], "cd") == 0) {
-	       if(chdir(args[1]) == -1)
-	        printf("Directory does not exist: %s\n", args[1]);
+	if(chdir(args[1]) == -1)
+	  printf("Directory does not exist: %s\n", args[1]);
       }
-      
-      /*EXECUTION OF 'SCHEDINFO' COMMAND*/
-      else if (strcmp(args[0], "schedInfo") == 0) {
-        chdir("Module");
-        kernel_execute(args);
-        chdir("..");
-      }
-     
-      /*STANDARD COMMAND EXECUTION WITH A CHILD PROCESS*/
-      else {
+      else { //child process required
 	//PIPES
 	char *pargs[MAX_LINE/2+1];
 	int piped = pipe_args(args, pargs);
 	int pipe_fd[2];
-	
-	/*GENERIC EXECUTION STRATEGY FOR NOT-PIPED COMMANDS*/
+
 	if (!piped) {
 	  child = fork();
 	  if (child == 0) {
 	    int fd;
 	    int srs = setup_redirect(args, &fd); //set arguments and open file if redirection exists
 
-	    setdown_redirect(&fd, srs); //close the file if opened
 	    if (generic_execute(args) == -1)
 	      printf("Error: Unknown command!\n");
 
+	    setdown_redirect(&fd, srs); //close the file if opened
 	    exit(0); //exit child.
 	  }
-	  else {	   
-	    if (!background) //support background processes
+	  else {
+	    //printf("%d\n", background);
+	    // printf("here\n");
+
+	    if (!background)
 	      waitpid(child, &status, 0);
 	  }
 	}
-	
-	/*GENERIC EXECUTION STRATEGY FOR PIPED COMMANDS*/
 	else { //if the program is piped
 	  pid_t child2;
 	  pipe(pipe_fd);
 	  child = fork();
-	  ///First child, executes after |
-	  if (child == 0) {
+
+	  if (child == 0) { //child
 	    //pipe(pipe_fd);
-	    int fd, srs;
-	     dup2(pipe_fd[0], STDIN_FILENO);
-	     close(pipe_fd[1]);
-	     //redirection support
-	     srs = setup_redirect(pargs, &fd);
-	     setdown_redirect(&fd, srs);
+	     dup2(pipe_fd[0], 0);
+	      close(pipe_fd[1]);
 	      if (generic_execute(pargs) == -1)
 		printf("Error: Unknown command after |\n");
 	      exit(0);
+
 	  }
 	  else  { //parent
 	    child2 = fork();
-	    ///Second child (executes before |)
 	    if (child2 == 0) {
-	      int fd, srs;
-	      dup2(pipe_fd[1], STDOUT_FILENO);
+	      //pipe(pipe_fd);
+	      dup2(pipe_fd[1], 1);
 	      close(pipe_fd[0]);
-	      //redirection support
-	      srs = setup_redirect(args, &fd);
-	      setdown_redirect(&fd, srs);
 	      if (generic_execute(args) == -1)
 		printf("Error: Unknown command before |\n");
 	      exit(0);
+	    } else {
+	      wait(NULL);
 	    }
-	    else { //parent
-	      wait(NULL); //wait for child 2
-	    }
-	    ///close pipe
+	    //printf("here...\n");
+	    // close(pipe_fd[0]);
 	    close(pipe_fd[0]);
 	    close(pipe_fd[1]);
-	    if (!background) //background support for pipes
-	      wait(NULL); //wait for children after pipes are closed
+	    wait(NULL);
+	    //printf("here...\n");
+	    // kill(child2, SIGTERM);
 	  }
 	}
       }
+
+
     }
-  }
-  if (kernel_module_pid != -1) {
-    char *exit_args[] = {"schedInfo", "-r"};
-    kernel_execute(exit_args);
+
   }
    return 0;
 }
@@ -264,57 +223,10 @@ int parseCommand(char inputBuffer[], char *args[],int *background)
 
 } /* end of parseCommand routine */
 
-
-//DOCUMENTATION OF THE FOLLOWING FUNCTIONS ARE ABOVE THEIR PROTOTYPES.
-
-int kernel_execute(char *args[])
+int execute(char *args[])
 {
 
-    //sudo insmod schedInfo processID=PID processSPolicy=policy processPrio=priority
-  char nargs[MAX_LINE*2];
-  int test;
 
-  if(strcmp(args[1], "-r")==0){
-    if(kernel_module_pid == -1){
-      printf("The kernel module does not exists!\n");
-      return -1;
-    }
-    system("sudo rmmod schedinfo");
-    printf("The kernel module is removed!\n");
-    kernel_module_pid = -1;
-    return 0;
-  }
-
-  if (args[1] == NULL ) {
-    sprintf(nargs, "sudo insmod schedinfo.ko");
-  }else if(args[2] == NULL){
-    sprintf(nargs, "sudo insmod schedinfo.ko processID=%s",
-	    args[1]);
-  }else if(args[3] == NULL){
-    sprintf(nargs, "sudo insmod schedinfo.ko processID=%s processSPolicy=%s",
-	    args[1], args[2]);
-  }else{
-    sprintf(nargs, "sudo insmod schedinfo.ko processID=%s processSPolicy=%s processPrio=%s",
-	    args[1], args[2], args[3]);
-  }
-
-  if(kernel_module_pid == atoi(args[1])){
-    printf("The kernel module is aldready loaded!\n");
-    return 0;
-  }
-
-  if(kernel_module_pid != -1)
-    system("sudo rmmod schedinfo");
-
-  test = system(nargs);
-  if(test != -1){
-    printf("The module is loaded\n");
-    kernel_module_pid = atoi(args[1]);
-  }else{
-    printf("Insmod operation exit code: %d\n", test);
-  }
-  return 0;
-  
 }
 
 int generic_execute(char *args[])
@@ -322,10 +234,10 @@ int generic_execute(char *args[])
   char buf[400];
   FILE *cf;
   char *token;
-  //THRASH
+
   if(strcmp(args[0], "trash") == 0){
     if(strcmp(args[1], "-r") == 0){
-      char rembash[MAX_LINE*2];
+      char rembash[100];
       sprintf(rembash, "crontab -l | grep -v -w '%s'| crontab -", args[2]);
       system(rembash);
       system("crontab -l > op.txt");
@@ -342,18 +254,14 @@ int generic_execute(char *args[])
     execv(cr_args[0], cr_args);
     //0	2	*	*	*	cd <directory> ; rm -rf *
     return 1;
-  }
-  //COMPILE AND RUN( CAR)
-  else if (strcmp(args[0], "car") == 0) {
+  }else if (strcmp(args[0], "car") == 0) {
    return  compile_and_run(args);
   }
-  
+
   if((strcmp(args[0], "crontab") == 0)&&(strcmp(args[1], "-r") == 0))
     remove("op.txt");
 
-  //GENERIC EXECUTION THRU PATH
-  /*Inspired by 
-    http://stackoverflow.com/questions/11840833/getting-output-of-a-system-command-from-stdout-in-c*/
+  //read the path
   cf = popen("echo $PATH", "r");
   fgets(buf, sizeof(buf), cf);
   pclose(cf);
@@ -392,16 +300,13 @@ int compile_and_run(char *args[])
   if (token == NULL) {
     printf("car: Input extension is missing\n");
   }
-  //PYTHON
-  if (strcmp(token, "py") == 0) {
+
+  if (strcmp(token, "py") == 0) { //python
     char *exe_args[] = {"python", args[1], NULL};
     return  generic_execute(exe_args);
   }
-  //C and C++
-  else if (strcmp(token, "c") == 0 || strcmp(token, "cpp") == 0) {
+  else if (strcmp(token, "c") == 0 || strcmp(token, "cpp") == 0) { //c & c++
     char *exe_args[] = {(strlen(token) == 1) ? "gcc" : "g++",
-			"-o",
-			name,
 			args[1],
 			NULL};
     pid_t c1 = fork();
@@ -410,15 +315,12 @@ int compile_and_run(char *args[])
 	printf("%s not found in your path\n", exe_args[0]);
       exit(0);
     } else {
-      char run_str[MAX_LINE-4];
       wait(NULL);
-      sprintf(run_str, "./%s", name);
-      system(run_str);
+      system("./a.out");
     }
     return 1;
   }
-  //JAVA
-  else if (strcmp(token, "java") == 0) {
+  else if (strcmp(token, "java") == 0) { //java
     char *exe_args[] = {"javac", args[1], NULL};
     pid_t ch = fork();
     if (ch == 0) {
@@ -436,10 +338,9 @@ int compile_and_run(char *args[])
   }
   else {
     printf("Unknown language %s\n", token);
-    return -3;
+    return -1;
   }
 }
-
 
 int setup_redirect(char *args[], int *fd)
 {
@@ -447,10 +348,10 @@ int setup_redirect(char *args[], int *fd)
   int size = 0;
 
   while (args[size] != NULL) size++;
+  // printf("%d\n", size);
 
   if(size < 3) return -1;
 
-  //OVERWRITE
   if (strcmp(args[size-2], ">") == 0) {
     strcpy(filename, args[size-1]);
     // printf("%s\n", filename);
@@ -460,20 +361,16 @@ int setup_redirect(char *args[], int *fd)
     dup2(*fd, STDOUT_FILENO);
     return 0;
   }
-  
-  //APPEND
   if(strcmp(args[size-2], ">>") == 0) {
     strcpy(filename, args[size-1]);
     args[size-1] = args[size-2] = NULL;
     *fd = open(filename, O_WRONLY | O_APPEND | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
     dup2(*fd, STDOUT_FILENO);
-
     return 1;
   }
-  //NO REDIRECT
+
   return -1;
 }
-
 
 int pipe_args(char *args[], char *pargs[])
 {
@@ -486,7 +383,7 @@ int pipe_args(char *args[], char *pargs[])
     }
     i++;
   }
-  if (pipe_index == 0) return 0; //pipe is not found
+  if (pipe_index == 0) return 0;
 
   args[pipe_index] = NULL;
 

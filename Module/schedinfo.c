@@ -78,7 +78,7 @@ int myfileinfo_init(void)
 			param.sched_priority = task->prio;
 		}
 
-    sched_setscheduler(task, processSPolicy, &param);
+   
 		printk("\nChanging process scheduler info: %d\n", sched_setscheduler(task, processSPolicy, & param));
 
 
