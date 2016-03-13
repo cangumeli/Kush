@@ -33,18 +33,22 @@ int myfileinfo_init(void)
 		printk("Process id is not provided.\n");
 		return 0;
 	}
-
+	
+	//find the process with the given id
 	for_each_process(task){
 		if (task->pid == processID) {
 			id_found = 1;
 			break;
 		}
 	}
+	//exit if id is not found
 	if (id_found == -1) {
 		//printk("here\n");
 		printk("Process not found with id %d\n", processID);
 		return 0;
 	}
+	
+	//Print out the relevant info
 	printk("Executable Name: %s\n", task->comm);
 	printk("Process ID     : %d\n", task->pid);
 	printk("Priority       : %d\n", task->prio);
@@ -56,7 +60,7 @@ int myfileinfo_init(void)
 	printk("User ID        : %d\n", task->cred->uid.val);
 
 
-
+	//List the sibling names and ids
 	list_for_each(p, &(task->parent->children)){
 		tt = *list_entry(p, struct task_struct, sibling);
 		if(tt.pid != task->pid){
@@ -64,21 +68,21 @@ int myfileinfo_init(void)
 			printk("Sibling Process ID     : %d\n", tt.pid);
 		}
 	}
-
+	
 	if(processSPolicy == -1 && processPrio == -1)
 		return 0;
 
-		if(processSPolicy == -1){
-			processSPolicy = task->policy;
-		}
+	if(processSPolicy == -1){
+	  processSPolicy = task->policy;
+	}
 
-		if (processPrio != -1){
-			param.sched_priority = processPrio;
-		}else{
-			param.sched_priority = task->prio;
-		}
+	if (processPrio != -1){
+	  param.sched_priority = processPrio;
+	}else{
+	  param.sched_priority = task->prio;
+	}
 
-   
+	//Print the info after the modifications
 		printk("\nChanging process scheduler info: %d\n", sched_setscheduler(task, processSPolicy, & param));
 
 
@@ -131,11 +135,6 @@ void get_pol_name(int pol){
 void myfileinfo_exit(void)
  {
 	printk(KERN_INFO "Removing Module\n");
-
-	/*list_for_each_entry_safe( ptr, next, &files_list, list) {
-		list_del(&ptr->list);
-		kfree(ptr);
-	}*/
 }
 
 module_init( myfileinfo_init);
